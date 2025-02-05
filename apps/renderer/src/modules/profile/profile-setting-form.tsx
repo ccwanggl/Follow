@@ -1,13 +1,5 @@
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useMutation } from "@tanstack/react-query"
-import { useForm } from "react-hook-form"
-import { useTranslation } from "react-i18next"
-import { toast } from "sonner"
-import { z } from "zod"
-
-import { setWhoami, useWhoami } from "~/atoms/user"
-import { Avatar, AvatarImage } from "~/components/ui/avatar"
-import { Button } from "~/components/ui/button"
+import { Avatar, AvatarImage } from "@follow/components/ui/avatar/index.jsx"
+import { Button } from "@follow/components/ui/button/index.js"
 import {
   Form,
   FormControl,
@@ -16,34 +8,51 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "~/components/ui/form"
-import { Input } from "~/components/ui/input"
-import { apiClient } from "~/lib/api-fetch"
+} from "@follow/components/ui/form/index.jsx"
+import { Input } from "@follow/components/ui/input/index.js"
+import { updateUser } from "@follow/shared/auth"
+import { cn } from "@follow/utils/utils"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useMutation } from "@tanstack/react-query"
+import { useForm } from "react-hook-form"
+import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
+import { z } from "zod"
+
+import { setWhoami, useWhoami } from "~/atoms/user"
 import { toastFetchError } from "~/lib/error-parser"
 
 const formSchema = z.object({
-  handle: z.string().max(50),
+  handle: z.string().max(50).optional(),
   name: z.string().min(3).max(50),
   image: z.string().url(),
 })
 
-export const ProfileSettingForm = () => {
+export const ProfileSettingForm = ({
+  className,
+  buttonClassName,
+}: {
+  className?: string
+  buttonClassName?: string
+}) => {
   const { t } = useTranslation("settings")
   const user = useWhoami()
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      handle: user?.handle || "",
+      handle: user?.handle || undefined,
       name: user?.name || "",
       image: user?.image || "",
     },
   })
 
   const updateMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof formSchema>) =>
-      apiClient["auth-app"]["update-account"].$patch({
-        json: values,
+    mutationFn: (values: z.infer<typeof formSchema>) =>
+      updateUser({
+        handle: values.handle,
+        image: values.image,
+        name: values.name,
       }),
     onError: (error) => {
       toastFetchError(error)
@@ -64,7 +73,7 @@ export const ProfileSettingForm = () => {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="mt-4 space-y-4">
+      <form onSubmit={form.handleSubmit(onSubmit)} className={cn("mt-4 space-y-4", className)}>
         <FormField
           control={form.control}
           name="handle"
@@ -117,7 +126,7 @@ export const ProfileSettingForm = () => {
           )}
         />
 
-        <div className="text-right">
+        <div className={cn("text-right", buttonClassName)}>
           <Button type="submit" isLoading={updateMutation.isPending}>
             {t("profile.submit")}
           </Button>

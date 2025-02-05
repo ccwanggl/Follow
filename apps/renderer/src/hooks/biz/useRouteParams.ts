@@ -1,14 +1,16 @@
-import type { Params } from "react-router-dom"
-import { useParams, useSearchParams } from "react-router-dom"
+import { getReadonlyRoute, useReadonlyRouteSelector } from "@follow/components/atoms/route.js"
+import { FeedViewType } from "@follow/constants"
+import type { Params } from "react-router"
+import { useParams, useSearchParams } from "react-router"
 
-import { getReadonlyRoute, useReadonlyRouteSelector } from "~/atoms/route"
 import {
   FEED_COLLECTION_LIST,
   ROUTE_ENTRY_PENDING,
   ROUTE_FEED_IN_FOLDER,
+  ROUTE_FEED_IN_INBOX,
+  ROUTE_FEED_IN_LIST,
   ROUTE_FEED_PENDING,
 } from "~/constants"
-import { FeedViewType } from "~/lib/enum"
 
 // '0', '1', '2', '3', '4', '5',
 const FeedViewTypeValues = (() => {
@@ -42,8 +44,9 @@ export interface BizRouteParams {
   isCollection: boolean
   isAllFeeds: boolean
   isPendingEntry: boolean
-
   folderName?: string
+  inboxId?: string
+  listId?: string
 }
 
 const parseRouteParams = (params: Params<any>, search: URLSearchParams): BizRouteParams => {
@@ -64,16 +67,21 @@ const parseRouteParams = (params: Params<any>, search: URLSearchParams): BizRout
     folderName: params.feedId?.startsWith(ROUTE_FEED_IN_FOLDER)
       ? params.feedId.slice(ROUTE_FEED_IN_FOLDER.length)
       : undefined,
+    inboxId: params.feedId?.startsWith(ROUTE_FEED_IN_INBOX)
+      ? params.feedId.slice(ROUTE_FEED_IN_INBOX.length)
+      : undefined,
+    listId: params.feedId?.startsWith(ROUTE_FEED_IN_LIST)
+      ? params.feedId.slice(ROUTE_FEED_IN_LIST.length)
+      : undefined,
   }
 }
 
 export const useRouteParams = () => {
-  const params = useParams()
-  const [search] = useSearchParams()
-
-  return parseRouteParams(params, search)
+  return useRouteParamsSelector((s) => s)
 }
+
 const noop = [] as any[]
+
 export const useRouteParamsSelector = <T>(
   selector: (params: BizRouteParams) => T,
   deps = noop,

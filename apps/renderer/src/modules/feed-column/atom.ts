@@ -1,7 +1,8 @@
+import { getStorageNS } from "@follow/utils/ns"
+import { atom } from "jotai"
 import { atomWithStorage } from "jotai/utils"
 
 import { createAtomHooks } from "~/lib/jotai"
-import { getStorageNS } from "~/lib/ns"
 
 export type FeedListSortBy = "count" | "alphabetical"
 export type FeedListSortOrder = "asc" | "desc"
@@ -33,3 +34,13 @@ export const setFeedListSortOrder = (order: FeedListSortOrder) => {
     order,
   })
 }
+
+const SELECT_NOTHING = []
+export const [, useSelectedFeedIdsState, , , getSelectedFeedIds, setSelectedFeedIds, ,] =
+  createAtomHooks(atom<string[]>(SELECT_NOTHING))
+export const resetSelectedFeedIds = () => {
+  setSelectedFeedIds(SELECT_NOTHING)
+}
+
+export const [, , useFeedAreaScrollProgressValue, , , setFeedAreaScrollProgressValue] =
+  createAtomHooks(atom(0))

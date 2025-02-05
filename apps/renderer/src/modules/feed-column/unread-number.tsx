@@ -1,5 +1,6 @@
+import { cn } from "@follow/utils/utils"
+
 import { useUISettingKey } from "~/atoms/settings/ui"
-import { cn } from "~/lib/utils"
 
 export const UnreadNumber = ({
   unread,
@@ -11,17 +12,16 @@ export const UnreadNumber = ({
   isList?: boolean
 }) => {
   const showUnreadCount = useUISettingKey("sidebarShowUnreadCount")
-  if (!showUnreadCount) return null
+
   if (!unread) return null
   return (
     <div
-      className={cn("text-[0.65rem] tabular-nums text-zinc-400 dark:text-neutral-500", className)}
-    >
-      {isList ? (
-        <i className="block size-1.5 rounded-full bg-zinc-400 dark:bg-neutral-500" />
-      ) : (
-        unread
+      className={cn(
+        "center text-[0.65rem] tabular-nums text-zinc-400 dark:text-neutral-500",
+        className,
       )}
+    >
+      {isList || !showUnreadCount ? <i className="i-mgc-round-cute-fi text-[0.3rem]" /> : unread}
     </div>
   )
 }

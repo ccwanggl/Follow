@@ -7,28 +7,14 @@ on:
 env:
   VITE_WEB_URL: ${{ vars.VITE_WEB_URL }}
   VITE_API_URL: ${{ vars.VITE_API_URL }}
-  VITE_IMGPROXY_URL: ${{ vars.VITE_IMGPROXY_URL }}
   VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
-  VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
+  VITE_OPENPANEL_CLIENT_ID: ${{ vars.VITE_OPENPANEL_CLIENT_ID }}
+  VITE_OPENPANEL_API_URL: ${{ vars.VITE_OPENPANEL_API_URL }}
+  VITE_FIREBASE_CONFIG: ${{ vars.VITE_FIREBASE_CONFIG }}
   NODE_OPTIONS: --max-old-space-size=8192
 
 jobs:
-  check-for-changes:
-    runs-on: ubuntu-latest
-    # outputs:
-    # should_run: ${{ steps.check.outputs.should_run }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      # - name: Check for code changes
-      #   id: check
-      #   run: |
-      #     git diff --quiet @{1.day.ago} HEAD -- ':!.github' || echo "should_run=true" >> $GITHUB_OUTPUT
-
   nightly-release:
-    # needs: check-for-changes
-    # if: needs.check-for-changes.outputs.should_run == 'true'
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -65,6 +51,10 @@ jobs:
           node-version: 22
           cache: "pnpm"
 
+      - name: Install Python setuptools
+        if: runner.os == 'macOS'
+        run: brew install python-setuptools
+
       - name: Install appdmg
         if: runner.os == 'macOS'
         run: pnpm add -g appdmg
@@ -81,25 +71,20 @@ jobs:
           CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
           PP_PATH=$RUNNER_TEMP/build_pp.provisionprofile
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-
           # import certificate and provisioning profile from secrets
           echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
           echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o $PP_PATH
-
           # create temporary keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-
           # import certificate to keychain
           security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security list-keychain -d user -s $KEYCHAIN_PATH
-
           # apply provisioning profile
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
-
       - name: Install dependencies
         run: pnpm i
 
@@ -107,25 +92,25 @@ jobs:
         shell: bash
         run: |
           # Get the current version from package.json
-          if [ -f package.json ]; then
-            CURRENT_VERSION=$(node -p "require('./package.json').version")
-            # Remove any existing prerelease identifier (e.g., -alpha.1)
-            BASE_VERSION=$(echo $CURRENT_VERSION | sed -E 's/(-[a-zA-Z]+\.[0-9]+)$//')
-            # Generate the nightly version
-            NIGHTLY_DATE=$(date +'%Y%m%d')
-            NIGHTLY_VERSION="${BASE_VERSION}-nightly.${NIGHTLY_DATE}"
-            echo "NIGHTLY_VERSION=$NIGHTLY_VERSION" >> $GITHUB_ENV
-            # Update version in package.json
-            if [[ "$RUNNER_OS" == "Windows" ]]; then
-              sed -i "s/\"version\": \".*\"/\"version\": \"$NIGHTLY_VERSION\"/" package.json
-            else
-              sed -i '' "s/\"version\": \".*\"/\"version\": \"$NIGHTLY_VERSION\"/" package.json
-            fi
-            echo "Updated version to $NIGHTLY_VERSION"
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          # Remove any existing prerelease identifier (e.g., -alpha.1)
+          BASE_VERSION=$(echo $CURRENT_VERSION | sed -E 's/(-[a-zA-Z]+\.[0-9]+)$//')
+          # Generate the nightly version
+          NIGHTLY_DATE=$(date +'%Y%m%d')
+          NIGHTLY_VERSION="${BASE_VERSION}-nightly.${NIGHTLY_DATE}"
+          echo "NIGHTLY_VERSION=$NIGHTLY_VERSION" >> $GITHUB_ENV
+          # Update version in package.json
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            sed -i "s/\"version\": \".*\"/\"version\": \"$NIGHTLY_VERSION\"/" package.json
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            sed -i '' "s/\"version\": \".*\"/\"version\": \"$NIGHTLY_VERSION\"/" package.json
           else
-            echo "package.json not found"
-            exit 1
+            sed -i "s/\"version\": \".*\"/\"version\": \"$NIGHTLY_VERSION\"/" package.json
           fi
+          echo "Updated version to $NIGHTLY_VERSION"
+
+      - name: Update main hash
+        run: pnpm update:main-hash
 
       - name: Build
         if: matrix.os != 'macos-latest'
@@ -142,6 +127,10 @@ jobs:
           KEYCHAIN_PATH: ${{ runner.temp }}/app-signing.keychain-db
         run: pnpm build:macos
 
+      - name: Build (Render)
+        run: pnpm build:render
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -152,6 +141,9 @@ jobs:
             out/make/**/*.AppImage
             out/make/**/*.yml
             out/make/**/*.dmg
+            dist/manifest.yml
+            dist/*.tar.gz
+
           retention-days: 7
 
       - name: Generate artifact attestation
@@ -164,6 +156,8 @@ jobs:
             out/make/**/*.exe
             out/make/**/*.AppImage
             out/make/**/*.yml
+            dist/manifest.yml
+            dist/*.tar.gz
 
       - name: Create Nightly Release
         uses: softprops/action-gh-release@v2
@@ -171,12 +165,16 @@ jobs:
           name: Nightly ${{ env.NIGHTLY_VERSION }}
           draft: false
           prerelease: true
+          tag_name: ${{ env.NIGHTLY_VERSION }}
           files: |
             out/make/**/*.dmg
             out/make/**/*.zip
             out/make/**/*.exe
             out/make/**/*.AppImage
             out/make/**/*.yml
+            dist/manifest.yml
+            dist/*.tar.gz
+
           body: |
             This is an automated nightly release for testing purposes.
             Version: ${{ env.NIGHTLY_VERSION }}
